@@ -107,7 +107,6 @@ public class VelocityTabListLegacy extends VelocityTabList {
         // For 1.7 there is only add and remove
         break;
     }
-
   }
 
   @Override

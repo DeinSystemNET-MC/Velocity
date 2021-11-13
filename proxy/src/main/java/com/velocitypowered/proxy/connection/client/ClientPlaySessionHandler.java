@@ -33,6 +33,7 @@ import com.velocitypowered.api.network.ProtocolVersion;
 import com.velocitypowered.api.proxy.messages.ChannelIdentifier;
 import com.velocitypowered.api.proxy.messages.LegacyChannelIdentifier;
 import com.velocitypowered.api.proxy.messages.MinecraftChannelIdentifier;
+import com.velocitypowered.api.proxy.player.ResourcePackInfo;
 import com.velocitypowered.proxy.VelocityServer;
 import com.velocitypowered.proxy.connection.ConnectionTypes;
 import com.velocitypowered.proxy.connection.MinecraftConnection;
@@ -53,7 +54,7 @@ import com.velocitypowered.proxy.protocol.packet.Respawn;
 import com.velocitypowered.proxy.protocol.packet.TabCompleteRequest;
 import com.velocitypowered.proxy.protocol.packet.TabCompleteResponse;
 import com.velocitypowered.proxy.protocol.packet.TabCompleteResponse.Offer;
-import com.velocitypowered.proxy.protocol.packet.TitlePacket;
+import com.velocitypowered.proxy.protocol.packet.title.GenericTitlePacket;
 import com.velocitypowered.proxy.protocol.util.PluginMessageUtil;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
@@ -72,6 +73,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 /**
@@ -283,9 +285,7 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
 
   @Override
   public boolean handle(ResourcePackResponse packet) {
-    server.getEventManager().fireAndForget(new PlayerResourcePackStatusEvent(player,
-        packet.getStatus()));
-    return false;
+    return player.onResourcePackResponse(packet.getStatus());
   }
 
   @Override
@@ -334,8 +334,11 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
     boolean writable = player.getConnection().getChannel().isWritable();
 
     if (!writable) {
-      // We might have packets queued from the server, so flush them now to free up memory.
-      player.getConnection().flush();
+      // We might have packets queued from the server, so flush them now to free up memory. Make
+      // sure to do it on a future invocation of the event loop, otherwise while the issue will
+      // fix itself, we'll still disable auto-reading and instead of backpressure resolution, we
+      // get client timeouts.
+      player.getConnection().eventLoop().execute(() -> player.getConnection().flush());
     }
 
     VelocityServerConnection serverConn = player.getConnectedServer();
@@ -400,7 +403,8 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
     // Clear any title from the previous server.
     if (player.getProtocolVersion().compareTo(MINECRAFT_1_8) >= 0) {
       player.getConnection()
-          .delayedWrite(TitlePacket.resetForProtocolVersion(player.getProtocolVersion()));
+              .delayedWrite(GenericTitlePacket.constructTitlePacket(
+                      GenericTitlePacket.ActionType.RESET, player.getProtocolVersion()));
     }
 
     // Flush everything

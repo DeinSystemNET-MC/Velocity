@@ -162,7 +162,7 @@ public class VelocityTabList implements TabList {
           if (name == null || properties == null) {
             throw new IllegalStateException("Got null game profile for ADD_PLAYER");
           }
-          entries.put(item.getUuid(), (VelocityTabListEntry) TabListEntry.builder()
+          entries.putIfAbsent(item.getUuid(), (VelocityTabListEntry) TabListEntry.builder()
               .tabList(this)
               .profile(new GameProfile(uuid, name, properties))
               .displayName(item.getDisplayName())
